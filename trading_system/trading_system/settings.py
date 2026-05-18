@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
+from urllib.parse import urlparse
 
 load_dotenv(override=False)
 
@@ -52,11 +53,17 @@ ASGI_APPLICATION = "trading_system.asgi.application"
 
 REDIS_URL = os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379').strip()
 
+_parsed = urlparse(REDIS_URL)
+
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [REDIS_URL],
+            "hosts": [{
+                "host": _parsed.hostname,
+                "port": _parsed.port or 6379,
+                "password": _parsed.password or None,
+            }],
         },
     },
 }
