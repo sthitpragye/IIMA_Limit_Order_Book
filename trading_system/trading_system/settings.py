@@ -32,6 +32,9 @@ DEBUG = os.environ.get('DEBUG', '0') == '1'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
 
+CSRF_TRUSTED_ORIGINS = [
+    "https://iimalimitorderbook-production.up.railway.app",
+]
 
 # Application definition
 
