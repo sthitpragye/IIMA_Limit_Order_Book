@@ -193,7 +193,7 @@
 
         <div class="header">
             <h1><span>Bulk User Creation</span></h1>
-            <h3>Welcome, <span>{{ user.username }}</span></h3>
+            <h3>Welcome, <span>{{ user.name }}</span></h3>
             <p>Upload your CSV file to create multiple users at once</p>
         </div>
 
@@ -373,7 +373,12 @@
         })
     );
 
-    dropZone.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+    dropZone.addEventListener('drop', e => {
+        const files = e.dataTransfer.files;
+        // Assign dropped files to the actual file input so the form POST includes them
+        fileInput.files = files;
+        handleFiles(files);
+    });
     fileInput.addEventListener('change', function () { handleFiles(this.files); });
 
     function handleFiles(files) {

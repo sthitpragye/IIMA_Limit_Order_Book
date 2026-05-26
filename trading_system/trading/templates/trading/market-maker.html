@@ -316,7 +316,7 @@
 
 <div class="mm-page">
   <div class="card" style="text-align: center;">
-    <h2 style="margin-bottom: 8px; text-shadow: 0 0 12px rgba(0, 255, 255, 0.45);">Welcome, {{ request.user.username }}!</h2>
+    <h2 style="margin-bottom: 8px; text-shadow: 0 0 12px rgba(0, 255, 255, 0.45);">Welcome, {{ request.user.name }}!</h2>
     <p class="mm-subtitle">Your market-making dashboard is ready. Quote both sides and manage live exposure.</p>
   </div>
 
@@ -344,8 +344,8 @@
           Hidden quantities
         </div>
         <div>
-          <span>IOC + Stoploss</span>
-          One active option
+          <span>Stoploss</span>
+          Trigger-based orders
         </div>
         <div>
           <span>Visibility</span>
@@ -373,14 +373,7 @@
               <label for="bid_price">Price</label>
               <input type="number" id="bid_price" step="0.01" class="form-control" required onchange="updateSpread()">
             </div>
-            <div class="form-group">
-              <label for="bid_is_ioc">IOC (Immediate/Cancel)</label>
-              <input type="hidden" id="bid_is_ioc" value="False">
-              <div class="yn-toggle" id="bid_is_ioc_toggle">
-                <button type="button" class="yn-option active" data-value="False" onclick="setBinaryToggle('bid_is_ioc', 'False')">No</button>
-                <button type="button" class="yn-option" data-value="True" onclick="setBinaryToggle('bid_is_ioc', 'True')">Yes</button>
-              </div>
-            </div>
+            <input type="hidden" id="bid_is_ioc" value="False">
             <div class="form-group">
               <label for="bid_stoploss">Stoploss Order</label>
               <input type="hidden" id="bid_stoploss" value="NO">
@@ -411,14 +404,7 @@
               <label for="ask_price">Price</label>
               <input type="number" id="ask_price" step="0.01" class="form-control" required onchange="updateSpread()">
             </div>
-            <div class="form-group">
-              <label for="ask_is_ioc">IOC (Immediate/Cancel)</label>
-              <input type="hidden" id="ask_is_ioc" value="False">
-              <div class="yn-toggle" id="ask_is_ioc_toggle">
-                <button type="button" class="yn-option active" data-value="False" onclick="setBinaryToggle('ask_is_ioc', 'False')">No</button>
-                <button type="button" class="yn-option" data-value="True" onclick="setBinaryToggle('ask_is_ioc', 'True')">Yes</button>
-              </div>
-            </div>
+            <input type="hidden" id="ask_is_ioc" value="False">
             <div class="form-group">
               <label for="ask_stoploss">Stoploss Order</label>
               <input type="hidden" id="ask_stoploss" value="NO">
@@ -666,31 +652,11 @@ document.addEventListener('DOMContentLoaded', async function(){
   const askQuantityInput = document.getElementById('ask_quantity');
   const askDisclosedInput = document.getElementById('ask_disclosed');
 
-  function syncPairedQuantities(sourceSide) {
-    const sourceQtyInput = sourceSide === 'bid' ? bidQuantityInput : askQuantityInput;
-    const targetQtyInput = sourceSide === 'bid' ? askQuantityInput : bidQuantityInput;
-
-    if (!sourceQtyInput.value) {
-      return;
-    }
-
-    if (targetQtyInput.value !== sourceQtyInput.value) {
-      targetQtyInput.value = sourceQtyInput.value;
-    }
-
-    validateDisclosed('bid');
-    validateDisclosed('ask');
-  }
-
   bidQuantityInput.addEventListener('input', function () {
-    // bidDisclosedInput.value = this.value;
-    syncPairedQuantities('bid');
     validateDisclosed('bid');
   });
 
   askQuantityInput.addEventListener('input', function () {
-    // askDisclosedInput.value = this.value;
-    syncPairedQuantities('ask');
     validateDisclosed('ask');
   });
 
@@ -1107,28 +1073,16 @@ document.addEventListener('DOMContentLoaded', async function(){
   }
 
   function toggleOrderOptions(side) {
-    const isIOC = document.getElementById(`${side}_is_ioc`).value === "True";
     const isStoploss = document.getElementById(`${side}_stoploss`).value === "YES";
     const targetPriceGroup = document.getElementById(`${side}_target_group`);
     const targetInput = document.getElementById(`${side}_target`);
 
-    if (isIOC) {
-      setBinaryToggle(`${side}_stoploss`, 'NO', { trigger: false });
-      setToggleDisabled(`${side}_stoploss`, true);
-      targetPriceGroup.style.display = "none";
-    } else {
-      setToggleDisabled(`${side}_stoploss`, false);
-    }
-
     if (isStoploss) {
       targetPriceGroup.style.display = "block";
       targetInput.required = true;
-      setBinaryToggle(`${side}_is_ioc`, 'False', { trigger: false });
-      setToggleDisabled(`${side}_is_ioc`, true);
     } else {
       targetPriceGroup.style.display = "none";
       targetInput.required = false;
-      if (!isIOC) setToggleDisabled(`${side}_is_ioc`, false);
     }
   }
 
@@ -1154,10 +1108,7 @@ document.addEventListener('DOMContentLoaded', async function(){
       return;
     }
 
-    if (bidQty !== askQty) {
-      alert(`❌ Error: Bid and Ask quantities must be the same.\n\nBid Qty: ${bidQty}\nAsk Qty: ${askQty}`);
-      return;
-    }
+
     
     // Validate spread (ask must be STRICTLY greater than bid)
     if (askPrice <= bidPrice) {
@@ -1251,15 +1202,12 @@ document.addEventListener('DOMContentLoaded', async function(){
 
   function buildOrderPayload(orderType) {
     const side = orderType === 'BUY' ? 'bid' : 'ask';
-    const oppositeSide = side === 'bid' ? 'ask' : 'bid';
     const qty = parseInt(document.getElementById(`${side}_quantity`).value) || 0;
-    const oppositeQty = parseInt(document.getElementById(`${oppositeSide}_quantity`).value) || 0;
     const disclosed = parseInt(document.getElementById(`${side}_disclosed`).value) || Math.max(1, Math.ceil(0.1 * qty));
     
     const payload = {
       order_type: orderType,
       quantity: qty.toString(),
-      paired_quantity: oppositeQty.toString(),
       disclosed_quantity: disclosed.toString(),
       price: document.getElementById(`${side}_price`).value,
       is_ioc: document.getElementById(`${side}_is_ioc`).value || 'False',
@@ -1278,7 +1226,7 @@ document.addEventListener('DOMContentLoaded', async function(){
     const formData = new URLSearchParams();
     formData.append('order_type', payload.order_type);
     formData.append('quantity', payload.quantity);
-    formData.append('paired_quantity', payload.paired_quantity);
+
     formData.append('disclosed_quantity', payload.disclosed_quantity);
     formData.append('price', payload.price);
     formData.append('is_ioc', payload.is_ioc);
@@ -1330,13 +1278,9 @@ document.addEventListener('DOMContentLoaded', async function(){
 
   function resetFormFields() {
     document.getElementById('mmForm').reset();
-    setToggleDisabled('bid_is_ioc', false);
     setToggleDisabled('bid_stoploss', false);
-    setToggleDisabled('ask_is_ioc', false);
     setToggleDisabled('ask_stoploss', false);
-    setBinaryToggle('bid_is_ioc', 'False', { trigger: false });
     setBinaryToggle('bid_stoploss', 'NO', { trigger: false });
-    setBinaryToggle('ask_is_ioc', 'False', { trigger: false });
     setBinaryToggle('ask_stoploss', 'NO', { trigger: false });
     toggleOrderOptions('bid');
     toggleOrderOptions('ask');

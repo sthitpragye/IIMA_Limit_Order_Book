@@ -138,6 +138,21 @@ def admin_home(request):
 
     recent_trades = Trade.objects.select_related('buyer', 'seller').order_by('-timestamp')[:10]
 
+    # Fetch active orders for the admin iceberg view
+    active_buy_orders = Order.objects.filter(
+        order_mode='LIMIT', is_matched=False, order_type='BUY', price__isnull=False,
+    ).select_related('user').order_by('-price')
+
+    active_sell_orders = Order.objects.filter(
+        order_mode='LIMIT', is_matched=False, order_type='SELL', price__isnull=False,
+    ).select_related('user').order_by('price')
+
+    # Annotate each order with its visible disclosed quantity
+    for order in active_buy_orders:
+        order.visible_disclosed = _visible_disclosed(order)
+    for order in active_sell_orders:
+        order.visible_disclosed = _visible_disclosed(order)
+
     context = {
         'base_role': 'ADMIN',
         'trader_count': BaseUser.objects.filter(role='TRADER').count(),
@@ -153,6 +168,8 @@ def admin_home(request):
         'best_ask_disclosed': best_ask['disclosed'] if best_ask else None,
         'last_trade': Trade.objects.order_by('-timestamp').first(),
         'recent_trades': recent_trades,
+        'active_buy_orders': active_buy_orders,
+        'active_sell_orders': active_sell_orders,
     }
 
     return render(request, 'trading/admin.html', context)
@@ -292,10 +309,9 @@ def market_maker_home(request):
             except (ValueError, TypeError):
                 return JsonResponse({'success': False, 'message': 'Disclosed quantity must be a valid integer.'}, status=400)
 
-            paired_quantity = request.POST.get('paired_quantity')
             stoploss_order = request.POST.get('Stoploss_order', 'NO')
             target_price = request.POST.get('Target_price')
-            is_ioc = request.POST.get('is_ioc') == 'True'
+            is_ioc = False  # IOC not applicable for market maker orders
             original_quantity = quantity
             end_time = request.POST.get('end_time')
 
@@ -304,21 +320,6 @@ def market_maker_home(request):
             # Validate basic fields
             if not order_type or quantity <= 0:
                 return JsonResponse({'success': False, 'message': 'Invalid order type or quantity'}, status=400)
-
-            if paired_quantity not in (None, ''):
-                try:
-                    paired_quantity_value = int(paired_quantity)
-                except (TypeError, ValueError):
-                    return JsonResponse({'success': False, 'message': 'Invalid paired quantity value.'}, status=400)
-
-                if paired_quantity_value <= 0:
-                    return JsonResponse({'success': False, 'message': 'Paired quantity must be greater than 0.'}, status=400)
-
-                if paired_quantity_value != quantity:
-                    return JsonResponse(
-                        {'success': False, 'message': 'Bid and Ask quantities must be the same for market maker quotes.'},
-                        status=400,
-                    )
 
             # Calculate minimum disclosed (10% of quantity, minimum 1)
             min_disclosed = max(1, int(quantity * 0.1))

@@ -91,6 +91,11 @@
   #best-ask {
     color: var(--muted);
   }
+
+  .qty-actual {
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
 </style>
 
 <div class="container">
@@ -120,9 +125,13 @@
       <div class="table-responsive">
         <table id="buy-orders" class="table">
           <thead>
-            <tr><th>Price</th><th>Quantity</th></tr>
+            <tr>
+              <th>Price</th>
+              <th>Disclosed Qty</th>
+              {% if base_role == "ADMIN" %}<th>Actual Qty</th>{% endif %}
+            </tr>
           </thead>
-          <tbody><tr><td colspan="2">Waiting for update...</td></tr></tbody>
+          <tbody><tr><td colspan="{% if base_role == 'ADMIN' %}3{% else %}2{% endif %}">Waiting for update...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -134,9 +143,13 @@
       <div class="table-responsive">
         <table id="sell-orders" class="table">
           <thead>
-            <tr><th>Price</th><th>Quantity</th></tr>
+            <tr>
+              <th>Price</th>
+              <th>Disclosed Qty</th>
+              {% if base_role == "ADMIN" %}<th>Actual Qty</th>{% endif %}
+            </tr>
           </thead>
-          <tbody><tr><td colspan="2">Waiting for update...</td></tr></tbody>
+          <tbody><tr><td colspan="{% if base_role == 'ADMIN' %}3{% else %}2{% endif %}">Waiting for update...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -205,6 +218,10 @@
 
 {% block scripts %}
 <script>
+  // Pass admin flag from Django template to JavaScript
+  const USER_ROLE = "{{ base_role|default:'' }}";
+  const isAdmin = (USER_ROLE === 'ADMIN');
+
   function updateBestBid() {
     fetch('/orderbook/get_best_bid/')
       .then(response => response.json())
@@ -238,9 +255,11 @@
       .then(response => response.json())
       .then(data => {
         const buyOrders = data.buy_orders;
-        const headers = ["price", "disclosed"];
+        const headers = isAdmin
+          ? ["price", "disclosed", "quantity"]
+          : ["price", "disclosed"];
         const rows = buyOrders.map(order => headers.map(h => {
-          let val = h === "disclosed" ? order.disclosed : order[h];
+          let val = order[h];
           return `"${(val ?? "").toString().replace(/"/g, '""')}"`;
         }).join(','));
 
@@ -263,9 +282,11 @@
       .then(response => response.json())
       .then(data => {
         const sellOrders = data.sell_orders;
-        const headers = ["price", "disclosed"];
+        const headers = isAdmin
+          ? ["price", "disclosed", "quantity"]
+          : ["price", "disclosed"];
         const rows = sellOrders.map(order => headers.map(h => {
-          let val = h === "disclosed" ? order.disclosed : order[h];
+          let val = order[h];
           return `"${(val ?? "").toString().replace(/"/g, '""')}"`;
         }).join(','));
 
@@ -324,9 +345,11 @@
           .forEach(o => {
             const price = parseFloat(o.price).toFixed(2);
             const disc  = parseFloat(o.disclosed) || 0;
+            const qty   = parseFloat(o.quantity) || 0;
 
-            if (!grouped[price]) grouped[price] = { disclosed: 0 };
+            if (!grouped[price]) grouped[price] = { disclosed: 0, quantity: 0 };
             grouped[price].disclosed += disc;
+            grouped[price].quantity  += qty;
 
             if (!buyOrdersByPrice[price]) buyOrdersByPrice[price] = [];
             buyOrdersByPrice[price].push(o);
@@ -334,12 +357,20 @@
 
         Object.entries(grouped)
           .sort((a,b) => parseFloat(b[0]) - parseFloat(a[0]))
-          .forEach(([price, {disclosed}]) => {
+          .forEach(([price, {disclosed, quantity}]) => {
             const tr = document.createElement('tr');
-            tr.innerHTML = `
-              <td>${price}</td>
-              <td>${disclosed}</td>
-            `;
+            if (isAdmin) {
+              tr.innerHTML = `
+                <td>${price}</td>
+                <td>${disclosed}</td>
+                <td class="qty-actual">${quantity}</td>
+              `;
+            } else {
+              tr.innerHTML = `
+                <td>${price}</td>
+                <td>${disclosed}</td>
+              `;
+            }
             tbody.appendChild(tr);
           });
       });
@@ -393,9 +424,11 @@
           .forEach(o => {
             const price     = parseFloat(o.price).toFixed(2);
             const disclosed = parseFloat(o.disclosed) || 0;
+            const qty       = parseFloat(o.quantity) || 0;
 
-            if (!grouped[price]) grouped[price] = { disclosed: 0 };
+            if (!grouped[price]) grouped[price] = { disclosed: 0, quantity: 0 };
             grouped[price].disclosed += disclosed;
+            grouped[price].quantity  += qty;
 
             if (!sellOrdersByPrice[price]) sellOrdersByPrice[price] = [];
             sellOrdersByPrice[price].push(o);
@@ -403,12 +436,20 @@
 
         Object.entries(grouped)
           .sort((a, b) => parseFloat(a[0]) - parseFloat(b[0]))
-          .forEach(([price, { disclosed }]) => {
+          .forEach(([price, { disclosed, quantity }]) => {
             const tr = document.createElement('tr');
-            tr.innerHTML = `
-              <td>${price}</td>
-              <td>${disclosed}</td>
-            `;
+            if (isAdmin) {
+              tr.innerHTML = `
+                <td>${price}</td>
+                <td>${disclosed}</td>
+                <td class="qty-actual">${quantity}</td>
+              `;
+            } else {
+              tr.innerHTML = `
+                <td>${price}</td>
+                <td>${disclosed}</td>
+              `;
+            }
             tbody.appendChild(tr);
           });
       })
@@ -479,7 +520,15 @@
       const buyOrdersTable = document.querySelector("#buy-orders tbody");
       buyOrdersTable.innerHTML = "";
       data.buy_orders.forEach(order => {
-        buyOrdersTable.innerHTML += `<tr><td>${order.price}</td><td>${order.disclosed}</td></tr>`;
+        if (isAdmin) {
+          buyOrdersTable.innerHTML += `<tr>
+            <td>${order.price}</td>
+            <td>${order.disclosed}</td>
+            <td class="qty-actual">${order.quantity}</td>
+          </tr>`;
+        } else {
+          buyOrdersTable.innerHTML += `<tr><td>${order.price}</td><td>${order.disclosed}</td></tr>`;
+        }
       });
     }
 
@@ -487,7 +536,15 @@
       const sellOrdersTable = document.querySelector("#sell-orders tbody");
       sellOrdersTable.innerHTML = "";
       data.sell_orders.forEach(order => {
-        sellOrdersTable.innerHTML += `<tr><td>${order.price}</td><td>${order.disclosed}</td></tr>`;
+        if (isAdmin) {
+          sellOrdersTable.innerHTML += `<tr>
+            <td>${order.price}</td>
+            <td>${order.disclosed}</td>
+            <td class="qty-actual">${order.quantity}</td>
+          </tr>`;
+        } else {
+          sellOrdersTable.innerHTML += `<tr><td>${order.price}</td><td>${order.disclosed}</td></tr>`;
+        }
       });
     }
 

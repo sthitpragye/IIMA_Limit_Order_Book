@@ -107,7 +107,7 @@
 <div class="row">
   <div class="col">
     <div class="card welcome-card">
-      <h1>Welcome, {{ request.user.username }}!</h1>
+      <h1>Welcome, {{ request.user.name }}!</h1>
       <p class="muted">Your trading dashboard is ready. Execute system operations with precision and speed.</p>
     </div>
 
@@ -181,6 +181,93 @@
     </div>
   </div>
 </div>
+
+<div class="row" style="margin-top:18px;">
+  <div class="col">
+    <div class="card">
+      <h3 style="color:var(--accent);margin-bottom:14px;">Active Orders — Iceberg View</h3>
+      <p style="color:var(--muted);font-size:0.82rem;margin-bottom:14px;">
+        As admin you can see both the <strong>Disclosed Qty</strong> (visible to market) and <strong>Actual Qty</strong> (true remaining size) for every order.
+        Iceberg orders are tagged with <span style="background:rgba(0,200,255,0.15);color:#00d4ff;padding:2px 6px;border-radius:4px;font-size:0.65rem;font-weight:700;border:1px solid rgba(0,200,255,0.25);">🧊 ICEBERG</span>.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <!-- Buy Orders -->
+        <div>
+          <h4 style="color:#4ade80;margin-bottom:8px;">Buy Orders (Bids)</h4>
+          <div style="overflow:auto;max-height:320px;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr>
+                  <th style="text-align:left;padding:8px;color:var(--muted);font-size:0.78rem;">User</th>
+                  <th style="text-align:right;padding:8px;color:var(--muted);font-size:0.78rem;">Price</th>
+                  <th style="text-align:right;padding:8px;color:var(--muted);font-size:0.78rem;">Disclosed Qty</th>
+                  <th style="text-align:right;padding:8px;color:var(--muted);font-size:0.78rem;">Actual Qty</th>
+                  <th style="text-align:center;padding:8px;color:var(--muted);font-size:0.78rem;">Type</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for o in active_buy_orders %}
+                <tr>
+                  <td style="padding:8px;font-size:0.85rem;">{{ o.user.username }}</td>
+                  <td style="padding:8px;text-align:right;color:#4ade80;">{{ o.price|floatformat:2 }}</td>
+                  <td style="padding:8px;text-align:right;">{{ o.visible_disclosed }}</td>
+                  <td style="padding:8px;text-align:right;color:var(--muted);">{{ o.quantity }}</td>
+                  <td style="padding:8px;text-align:center;">
+                    {% if o.visible_disclosed != o.quantity %}
+                      <span style="background:rgba(0,200,255,0.15);color:#00d4ff;font-size:0.65rem;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid rgba(0,200,255,0.25);">🧊 ICEBERG</span>
+                    {% else %}
+                      <span style="color:var(--muted);font-size:0.75rem;">Normal</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" style="padding:8px;color:var(--muted);">No active buy orders</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <!-- Sell Orders -->
+        <div>
+          <h4 style="color:#f87171;margin-bottom:8px;">Sell Orders (Asks)</h4>
+          <div style="overflow:auto;max-height:320px;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr>
+                  <th style="text-align:left;padding:8px;color:var(--muted);font-size:0.78rem;">User</th>
+                  <th style="text-align:right;padding:8px;color:var(--muted);font-size:0.78rem;">Price</th>
+                  <th style="text-align:right;padding:8px;color:var(--muted);font-size:0.78rem;">Disclosed Qty</th>
+                  <th style="text-align:right;padding:8px;color:var(--muted);font-size:0.78rem;">Actual Qty</th>
+                  <th style="text-align:center;padding:8px;color:var(--muted);font-size:0.78rem;">Type</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for o in active_sell_orders %}
+                <tr>
+                  <td style="padding:8px;font-size:0.85rem;">{{ o.user.username }}</td>
+                  <td style="padding:8px;text-align:right;color:#f87171;">{{ o.price|floatformat:2 }}</td>
+                  <td style="padding:8px;text-align:right;">{{ o.visible_disclosed }}</td>
+                  <td style="padding:8px;text-align:right;color:var(--muted);">{{ o.quantity }}</td>
+                  <td style="padding:8px;text-align:center;">
+                    {% if o.visible_disclosed != o.quantity %}
+                      <span style="background:rgba(0,200,255,0.15);color:#00d4ff;font-size:0.65rem;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid rgba(0,200,255,0.25);">🧊 ICEBERG</span>
+                    {% else %}
+                      <span style="color:var(--muted);font-size:0.75rem;">Normal</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" style="padding:8px;color:var(--muted);">No active sell orders</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="row" style="margin-top:18px;">
   <div class="col">
     <div class="card">
