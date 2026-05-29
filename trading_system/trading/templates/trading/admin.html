@@ -1,5 +1,5 @@
 {% extends 'trading/base.html' %}
-
+{% load tz %}
 {% block title %}Admin Console{% endblock %}
 
 {% block content %}
@@ -147,7 +147,7 @@
         <div class="market-line">Best Bid: {% if best_bid_price is not None %}{{ best_bid_price|floatformat:2 }} ({{ best_bid_disclosed }}){% else %}-{% endif %}</div>
         <div class="market-line">Best Ask: {% if best_ask_price is not None %}{{ best_ask_price|floatformat:2 }} ({{ best_ask_disclosed }}){% else %}-{% endif %}</div>
         <div class="market-line">Spread: {% if spread is not None %}{{ spread|floatformat:2 }}{% else %}-{% endif %}</div>
-        <div class="market-line">Last Trade: {% if last_trade %}{{ last_trade.price }} · {{ last_trade.quantity }} @ {{ last_trade.timestamp|date:"H:i:s" }}{% else %}-{% endif %}</div>
+        <div class="market-line">Last Trade: {% if last_trade %}{{ last_trade.price }} · {{ last_trade.quantity }} @ {{ last_trade.timestamp|localtime|date:"H:i:s" }}{% else %}-{% endif %}</div>
       </div>
     </div>
 
@@ -203,7 +203,7 @@
               <td style="padding:8px">{{ t.seller.username }}</td>
               <td style="padding:8px">{{ t.price }}</td>
               <td style="padding:8px">{{ t.quantity }}</td>
-              <td style="padding:8px">{{ t.timestamp|date:"Y-m-d H:i:s" }}</td>
+              <td style="padding:8px">{{ t.timestamp|localtime|date:"Y-m-d H:i:s" }}</td>
             </tr>
             {% empty %}
             <tr><td colspan="5" style="padding:8px">No recent trades</td></tr>
