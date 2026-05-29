@@ -74,6 +74,7 @@ def _serialize_order(order):
 #     return render(request, 'trading/login.html')
 
 
+
 def login(request):
     if request.method == 'POST':
         username = request.POST.get('username')
@@ -89,9 +90,10 @@ def login(request):
             elif user.role == 'ADMIN':
                 return redirect('admin_home')
         else:
-            return render(request, 'trading/login.html', {'error': 'Incorrect credentials. Please try again.'})
+            return render(request, 'trading/login.html', {'form': {'errors': True}})
 
     return render(request, 'trading/login.html')
+
 
 
 def logout_view(request):
