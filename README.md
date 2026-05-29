@@ -519,5 +519,5 @@ Please follow the existing code style (PEP 8 for Python, consistent template str
 
 ## License
 
-This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.   python manage.py runserver
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.   
    ```
