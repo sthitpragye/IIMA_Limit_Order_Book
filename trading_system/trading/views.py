@@ -281,16 +281,37 @@ def market_maker_home(request):
         try:
             order_type = request.POST.get('order_type')
             order_mode = 'LIMIT'
-            quantity = int(request.POST.get('quantity', 0))
+            # quantity = int(request.POST.get('quantity', 0))
             
+            # raw_disclosed = request.POST.get('disclosed_quantity', '').strip()
+            # if not raw_disclosed:
+            #     return JsonResponse({'success': False, 'message': 'Disclosed quantity is required.'}, status=400)
+            
+            # try:
+            #     disclosed = int(raw_disclosed)
+            # except (ValueError, TypeError):
+            #     return JsonResponse({'success': False, 'message': 'Disclosed quantity must be a valid integer.'}, status=400)
+            # --- UPDATED QUANTITY VALIDATION ---
+            try:
+                quantity = int(request.POST.get('quantity', 0))
+            except (ValueError, TypeError):
+                return JsonResponse({'success': False, 'message': 'Quantity must be a valid integer.'}, status=400)
+
+            if quantity <= 0:
+                return JsonResponse({'success': False, 'message': 'Quantity must be an integer greater than 0.'}, status=400)
+
+            # --- UPDATED DISCLOSED QUANTITY VALIDATION ---
             raw_disclosed = request.POST.get('disclosed_quantity', '').strip()
             if not raw_disclosed:
                 return JsonResponse({'success': False, 'message': 'Disclosed quantity is required.'}, status=400)
-            
+
             try:
                 disclosed = int(raw_disclosed)
             except (ValueError, TypeError):
                 return JsonResponse({'success': False, 'message': 'Disclosed quantity must be a valid integer.'}, status=400)
+
+            if disclosed <= 0:
+                return JsonResponse({'success': False, 'message': 'Disclosed quantity must be an integer greater than 0.'}, status=400)
 
             paired_quantity = request.POST.get('paired_quantity')
             stoploss_order = request.POST.get('Stoploss_order', 'NO')
@@ -314,11 +335,11 @@ def market_maker_home(request):
                 if paired_quantity_value <= 0:
                     return JsonResponse({'success': False, 'message': 'Paired quantity must be greater than 0.'}, status=400)
 
-                if paired_quantity_value != quantity:
-                    return JsonResponse(
-                        {'success': False, 'message': 'Bid and Ask quantities must be the same for market maker quotes.'},
-                        status=400,
-                    )
+                # if paired_quantity_value != quantity:
+                #     return JsonResponse(
+                #         {'success': False, 'message': 'Bid and Ask quantities must be the same for market maker quotes.'},
+                #         status=400,
+                #     )
 
             # Calculate minimum disclosed (10% of quantity, minimum 1)
             min_disclosed = max(1, int(quantity * 0.1))

@@ -111,61 +111,61 @@ def match_order(new_order):
             ).order_by('-price', 'timestamp')
             broadcast_orderbook_update()
 
-        # Immediate or Cancellation (IOC) orders
-        if new_order.is_ioc:
-            # Track executed quantity for IOC orders
-            executed_quantity=0
+        # # Immediate or Cancellation (IOC) orders
+        # if new_order.is_ioc:
+        #     # Track executed quantity for IOC orders
+        #     executed_quantity=0
             
-            for opposite_order in opposite_orders:
-                while new_order.quantity > 0 and opposite_order.quantity > 0:
-                    visible_qty = _visible_available(opposite_order)
-                    if visible_qty <= 0:
-                        break
+        #     for opposite_order in opposite_orders:
+        #         while new_order.quantity > 0 and opposite_order.quantity > 0:
+        #             visible_qty = _visible_available(opposite_order)
+        #             if visible_qty <= 0:
+        #                 break
 
-                    match_quantity = min(new_order.quantity, visible_qty)
+        #             match_quantity = min(new_order.quantity, visible_qty)
 
-                    closing_price = opposite_order.price
-                    Trade.objects.create(
-                        buyer=new_order.user if new_order.order_type == 'BUY' else opposite_order.user,
-                        seller=opposite_order.user if new_order.order_type == 'BUY' else new_order.user,
-                        quantity=match_quantity,
-                        price=closing_price,
-                        timestamp=timezone.now()
-                    )
-                    broadcast_orderbook_update()
+        #             closing_price = opposite_order.price
+        #             Trade.objects.create(
+        #                 buyer=new_order.user if new_order.order_type == 'BUY' else opposite_order.user,
+        #                 seller=opposite_order.user if new_order.order_type == 'BUY' else new_order.user,
+        #                 quantity=match_quantity,
+        #                 price=closing_price,
+        #                 timestamp=timezone.now()
+        #             )
+        #             broadcast_orderbook_update()
 
-                    executed_quantity += match_quantity
-                    total_matched += match_quantity
-                    new_order.quantity -= match_quantity
-                    opposite_order.quantity -= match_quantity
-                    _log_fill(new_order, opposite_order, match_quantity, 'ioc')
+        #             executed_quantity += match_quantity
+        #             total_matched += match_quantity
+        #             new_order.quantity -= match_quantity
+        #             opposite_order.quantity -= match_quantity
+        #             _log_fill(new_order, opposite_order, match_quantity, 'ioc')
 
-                    if opposite_order.quantity == 0:
-                        opposite_order.is_matched = True
-                    opposite_order.save()
-                    broadcast_orderbook_update()
+        #             if opposite_order.quantity == 0:
+        #                 opposite_order.is_matched = True
+        #             opposite_order.save()
+        #             broadcast_orderbook_update()
 
-                if new_order.quantity <= 0:
-                    break
+        #         if new_order.quantity <= 0:
+        #             break
             
-            # Handle IOC order after matching
-            if executed_quantity>0:
-                # Partially executed:save with executed quantity and mark as matched
-                new_order.quantity=0  # Discard remaining quantity
-                new_order.is_matched=True
-                new_order.disclosed=0 
-                print("saved1")
-                new_order.save()
-                broadcast_orderbook_update()
-                _log_match_summary(new_order, initial_quantity, total_matched, 'ioc', 'ioc_completed')
-                return  # To prevent further processing
-            else:
-                # Completely unexecuted:delete the order
-                print("delete1")
-                _log_match_summary(new_order, initial_quantity, total_matched, 'ioc', 'ioc_unfilled_deleted')
-                new_order.delete()
-                broadcast_orderbook_update()
-                return
+        #     # Handle IOC order after matching
+        #     if executed_quantity>0:
+        #         # Partially executed:save with executed quantity and mark as matched
+        #         new_order.quantity=0  # Discard remaining quantity
+        #         new_order.is_matched=True
+        #         new_order.disclosed=0 
+        #         print("saved1")
+        #         new_order.save()
+        #         broadcast_orderbook_update()
+        #         _log_match_summary(new_order, initial_quantity, total_matched, 'ioc', 'ioc_completed')
+        #         return  # To prevent further processing
+        #     else:
+        #         # Completely unexecuted:delete the order
+        #         print("delete1")
+        #         _log_match_summary(new_order, initial_quantity, total_matched, 'ioc', 'ioc_unfilled_deleted')
+        #         new_order.delete()
+        #         broadcast_orderbook_update()
+        #         return
 
         # Try to match with the opposite orders
         if(new_order.order_mode=="LIMIT"):
