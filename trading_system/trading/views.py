@@ -870,7 +870,9 @@ def execute_order():
         if buy_order.target_price is None:
             logger.warning("Skipping BUY stoploss order %s with null target_price", buy_order.id)
             continue
-        if buy_order.target_price >= closing_price:
+        # BUY STOP triggers when market price RISES to or ABOVE the Stop Price
+        # (i.e. closing_price >= target_price  =>  target_price <= closing_price)
+        if buy_order.target_price <= closing_price:
             new_order = convert_stoploss_to_order(buy_order)
             new_order.save()
             match_order(new_order)
@@ -880,7 +882,9 @@ def execute_order():
         if sell_order.target_price is None:
             logger.warning("Skipping SELL stoploss order %s with null target_price", sell_order.id)
             continue
-        if sell_order.target_price <= closing_price:
+        # SELL STOP triggers when market price DROPS to or BELOW the Stop Price
+        # (i.e. closing_price <= target_price  =>  target_price >= closing_price)
+        if sell_order.target_price >= closing_price:
             new_order = convert_stoploss_to_order(sell_order)
             new_order.save()
             match_order(new_order)
