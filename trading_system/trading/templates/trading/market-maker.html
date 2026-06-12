@@ -750,7 +750,7 @@ document.addEventListener('DOMContentLoaded', async function(){
 
   function renderBookLadder() {
     const ladderContainer = document.getElementById('book-ladder-rows');
-    const sells = snapshotState.sellLevels.slice(0, 8);
+    const sells = snapshotState.sellLevels.slice(0, 8).reverse();
     const buys = snapshotState.buyLevels.slice(0, 8);
 
     const allSizes = [...sells.map((level) => level.size), ...buys.map((level) => level.size)];
