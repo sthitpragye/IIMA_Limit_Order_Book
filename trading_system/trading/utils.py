@@ -4,7 +4,8 @@ from .models import Order, Trade
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 import logging
-
+from decimal import Decimal, ROUND_HALF_UP
+from .models import Order, Trade, StopOrder, MarketControl
 
 logger = logging.getLogger(__name__)
 
@@ -59,116 +60,176 @@ def _log_match_summary(order, initial_quantity, total_matched, stage, note=''):
         note,
     )
 
-from decimal import Decimal, ROUND_HALF_UP
-def match_order(new_order):   
+
+# def process_stop_orders():
+#     """
+#     Check all pending StopOrders against the last traded price.
+#     Called at the end of every match_order() run, after trades have been recorded.
+
+#     Trigger conditions:
+#       - BUY stop:  triggers when last trade price >= target_price
+#       - SELL stop: triggers when last trade price <= target_price
+
+#     On trigger:
+#       - A new LIMIT Order is created using the stop order's fields.
+#       - match_order() is called on it so it either fills immediately
+#         or rests in the book.
+#       - The StopOrder row is marked is_matched=True (kept for audit trail).
+#     """
+#     from .models import StopOrder
+
+#     # Get the last traded price. If no trades exist yet, nothing to check.
+#     last_trade = Trade.objects.order_by('-timestamp').first()
+#     if last_trade is None:
+#         return
+
+#     last_price = last_trade.price
+
+#     pending_stop_orders = StopOrder.objects.filter(is_matched=False)
+
+#     for stop_order in pending_stop_orders:
+#         triggered = False
+
+#         if stop_order.order_type == 'BUY' and last_price >= stop_order.target_price:
+#             triggered = True
+#         elif stop_order.order_type == 'SELL' and last_price <= stop_order.target_price:
+#             triggered = True
+
+#         if not triggered:
+#             continue
+
+#         logger.info(
+#             "STOP_ORDER_TRIGGERED id=%s side=%s target=%s last_price=%s limit_price=%s",
+#             stop_order.id,
+#             stop_order.order_type,
+#             stop_order.target_price,
+#             last_price,
+#             stop_order.price,
+#         )
+
+#         try:
+#             with transaction.atomic():
+#                 # Convert the stop order into a regular LIMIT order.
+#                 new_order = Order(
+#                     user=stop_order.user,
+#                     user_role=stop_order.user_role,
+#                     order_type=stop_order.order_type,
+#                     order_mode='LIMIT',
+#                     quantity=stop_order.quantity,
+#                     disclosed=stop_order.disclosed,
+#                     price=stop_order.price,
+#                     original_quantity=stop_order.quantity,
+#                     is_matched=False,
+#                     is_ioc=stop_order.is_ioc,
+#                 )
+#                 new_order.save()
+
+#                 # Mark the stop order as triggered — kept for audit trail.
+#                 stop_order.is_matched = True
+#                 # Bypass full_clean() here since order_mode is read-only/editable=False
+#                 # and save() calls full_clean() which would re-validate correctly.
+#                 stop_order.save()
+
+#                 broadcast_orderbook_update()
+
+#             # Run matching outside the atomic block so that any trades created
+#             # by match_order() are visible to subsequent stop order checks.
+#             match_order(new_order)
+
+#         except Exception as e:
+#             logger.error("STOP_ORDER_ERROR id=%s error=%s", stop_order.id, str(e))
+
+def process_stop_orders():
+    """
+    Checks all pending StopOrders against the last traded price.
+    If triggered, creates the corresponding Order and executes it.
+    """
+    last_trade = Trade.objects.order_by('-timestamp').first()
+    if not last_trade:
+        return  # No trades yet to trigger anything
+
+    closing_price = last_trade.price
+    pending_stops = StopOrder.objects.filter(is_matched=False)
+
+    for stop_order in pending_stops:
+        triggered = False
+        
+        if stop_order.order_type == "BUY" and closing_price >= stop_order.target_price:
+            triggered = True
+        elif stop_order.order_type == "SELL" and closing_price <= stop_order.target_price:
+            triggered = True
+
+        if triggered:
+            new_order = Order(
+                user=stop_order.user,
+                user_role=stop_order.user_role,
+                order_type=stop_order.order_type,
+                order_mode=stop_order.order_mode,  # Will cleanly be LIMIT or MARKET
+                quantity=stop_order.quantity,
+                original_quantity=stop_order.quantity,
+                disclosed=stop_order.disclosed,
+                price=stop_order.price,            # Will be None for Traders
+                is_ioc=stop_order.is_ioc,
+                timestamp=timezone.now()
+            )
+            new_order.save()
+            
+            stop_order.is_matched = True
+            stop_order.save()
+            
+            match_order(new_order)
+
+def match_order(new_order):
     print("match")
 
     if new_order.price is not None:
         new_order.price = Decimal(str(new_order.price)).quantize(
-            Decimal('0.01'), 
+            Decimal('0.01'),
             rounding=ROUND_HALF_UP
         )
-        
-    # changes
-    closing_price= None
+
     initial_quantity = max(int(new_order.quantity or 0), 0)
     total_matched = 0
-    # Begin a transaction to ensure atomicity
+
     with transaction.atomic():
-        # For a BUY limit order, we are looking for SELL orders at the same price or lower
+        # For a BUY limit order, look for SELL orders at the same price or lower
         if new_order.order_type == 'BUY' and new_order.order_mode == 'LIMIT':
             opposite_orders = Order.objects.filter(
-                order_type='SELL', 
-                order_mode='LIMIT', 
-                price__lte=new_order.price, 
+                order_type='SELL',
+                order_mode='LIMIT',
+                price__lte=new_order.price,
                 is_matched=False
             ).order_by('price', 'timestamp')
             broadcast_orderbook_update()
-        
-        # For a SELL limit order, we are looking for BUY orders at the same price or higher
+
+        # For a SELL limit order, look for BUY orders at the same price or higher
         elif new_order.order_type == 'SELL' and new_order.order_mode == 'LIMIT':
             opposite_orders = Order.objects.filter(
-                order_type='BUY', 
-                order_mode='LIMIT', 
-                price__gte=new_order.price, 
+                order_type='BUY',
+                order_mode='LIMIT',
+                price__gte=new_order.price,
                 is_matched=False
             ).order_by('-price', 'timestamp')
             broadcast_orderbook_update()
 
-        # For a BUY market order, we are looking for SELL orders with the lowest price
+        # For a BUY market order, look for SELL orders with the lowest price
         elif new_order.order_type == 'BUY' and new_order.order_mode == 'MARKET':
             opposite_orders = Order.objects.filter(
-                order_type='SELL', 
+                order_type='SELL',
                 is_matched=False
             ).order_by('price', 'timestamp')
             broadcast_orderbook_update()
 
-        # For a SELL market order, we are looking for BUY orders with the highest price
+        # For a SELL market order, look for BUY orders with the highest price
         elif new_order.order_type == 'SELL' and new_order.order_mode == 'MARKET':
             opposite_orders = Order.objects.filter(
-                order_type='BUY', 
+                order_type='BUY',
                 is_matched=False
             ).order_by('-price', 'timestamp')
             broadcast_orderbook_update()
 
-        # # Immediate or Cancellation (IOC) orders
-        # if new_order.is_ioc:
-        #     # Track executed quantity for IOC orders
-        #     executed_quantity=0
-            
-        #     for opposite_order in opposite_orders:
-        #         while new_order.quantity > 0 and opposite_order.quantity > 0:
-        #             visible_qty = _visible_available(opposite_order)
-        #             if visible_qty <= 0:
-        #                 break
-
-        #             match_quantity = min(new_order.quantity, visible_qty)
-
-        #             closing_price = opposite_order.price
-        #             Trade.objects.create(
-        #                 buyer=new_order.user if new_order.order_type == 'BUY' else opposite_order.user,
-        #                 seller=opposite_order.user if new_order.order_type == 'BUY' else new_order.user,
-        #                 quantity=match_quantity,
-        #                 price=closing_price,
-        #                 timestamp=timezone.now()
-        #             )
-        #             broadcast_orderbook_update()
-
-        #             executed_quantity += match_quantity
-        #             total_matched += match_quantity
-        #             new_order.quantity -= match_quantity
-        #             opposite_order.quantity -= match_quantity
-        #             _log_fill(new_order, opposite_order, match_quantity, 'ioc')
-
-        #             if opposite_order.quantity == 0:
-        #                 opposite_order.is_matched = True
-        #             opposite_order.save()
-        #             broadcast_orderbook_update()
-
-        #         if new_order.quantity <= 0:
-        #             break
-            
-        #     # Handle IOC order after matching
-        #     if executed_quantity>0:
-        #         # Partially executed:save with executed quantity and mark as matched
-        #         new_order.quantity=0  # Discard remaining quantity
-        #         new_order.is_matched=True
-        #         new_order.disclosed=0 
-        #         print("saved1")
-        #         new_order.save()
-        #         broadcast_orderbook_update()
-        #         _log_match_summary(new_order, initial_quantity, total_matched, 'ioc', 'ioc_completed')
-        #         return  # To prevent further processing
-        #     else:
-        #         # Completely unexecuted:delete the order
-        #         print("delete1")
-        #         _log_match_summary(new_order, initial_quantity, total_matched, 'ioc', 'ioc_unfilled_deleted')
-        #         new_order.delete()
-        #         broadcast_orderbook_update()
-        #         return
-
-        # Try to match with the opposite orders
-        if(new_order.order_mode=="LIMIT"):
+        # LIMIT order matching
+        if new_order.order_mode == "LIMIT":
             remaining_quantity = new_order.quantity
             for opposite_order in opposite_orders:
                 while remaining_quantity > 0 and opposite_order.quantity > 0:
@@ -177,10 +238,7 @@ def match_order(new_order):
                         break
 
                     match_quantity = min(remaining_quantity, visible_qty)
-                    if new_order.order_mode == 'LIMIT':
-                        match_price = opposite_order.price
-                    else:
-                        match_price = opposite_order.price
+                    match_price = opposite_order.price
 
                     Trade.objects.create(
                         buyer=new_order.user if new_order.order_type == 'BUY' else opposite_order.user,
@@ -213,7 +271,6 @@ def match_order(new_order):
                 if remaining_quantity <= 0:
                     break
 
-            # If the new order is partially matched, update its quantity and status
             if new_order.quantity > 0:
                 new_order.save()
                 broadcast_orderbook_update()
@@ -222,22 +279,19 @@ def match_order(new_order):
                 new_order.save()
                 broadcast_orderbook_update()
 
-            # Ensure that any remaining unmatched orders are still available for future matches
-            
             new_order.timestamp = timezone.now()
-            # process_stoploss_orders(closing_price)
             new_order.save()
             broadcast_orderbook_update()
             _log_match_summary(new_order, initial_quantity, total_matched, 'limit', 'limit_flow_complete')
+
+        # MARKET order matching
         else:
-            
-            remaining_quantity=new_order.quantity
-            complete_order=False
-            # while(remaining_quantity>0):
+            remaining_quantity = new_order.quantity
+            complete_order = False
             try:
                 for opposite_order in opposite_orders:
-                    if(remaining_quantity<=0):
-                        complete_order=True
+                    if remaining_quantity <= 0:
+                        complete_order = True
                         break
 
                     while remaining_quantity > 0 and opposite_order.quantity > 0:
@@ -274,19 +328,27 @@ def match_order(new_order):
                         complete_order = True
                         break
             except Exception as e:
-                print('Some Error Occured')
-            
-            if(complete_order==False):
-                #the leftover quantity is converted to 0
-                remaining_quantity=0
-                new_order.quantity=0
-                new_order.is_matched=True
+                print('Some Error Occurred:', e)
+
+            if not complete_order:
+                remaining_quantity = 0
+                new_order.quantity = 0
+                new_order.is_matched = True
                 new_order.save()
                 broadcast_orderbook_update()
-                print("Incomplete order Placed")
+                print("Incomplete order placed")
+
             _log_match_summary(new_order, initial_quantity, total_matched, 'market', 'market_flow_complete')
+
+    # After all trades from this order are committed, check if any stop orders
+    # have been triggered by the last traded price. This runs for both LIMIT
+    # and MARKET orders since either can produce trades.
+    process_stop_orders()
+
+
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+
 
 def broadcast_orderbook_update():
     from .models import Order, Trade
@@ -340,7 +402,6 @@ def broadcast_orderbook_update():
         ]
     }
 
-
     channel_layer = get_channel_layer()
     async_to_sync(channel_layer.group_send)(
         'orderbook_group',
@@ -350,4 +411,3 @@ def broadcast_orderbook_update():
         }
     )
     print("Orderbook updated and broadcasted")
-    # return payload

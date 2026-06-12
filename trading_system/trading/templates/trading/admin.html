@@ -128,7 +128,7 @@
             <strong>{{ active_limit_orders }}</strong>
           </div>
           <div class="snapshot-metric">
-            <span>Stoploss Open</span>
+            <span>Stop Orders Open</span>
             <strong>{{ active_stoploss_orders }}</strong>
           </div>
           <div class="snapshot-metric">
@@ -181,6 +181,7 @@
     </div>
   </div>
 </div>
+
 <div class="row" style="margin-top:18px;">
   <div class="col">
     <div class="card">
@@ -207,6 +208,47 @@
             </tr>
             {% empty %}
             <tr><td colspan="5" style="padding:8px">No recent trades</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- NEW PENDING STOP ORDERS TABLE -->
+<div class="row" style="margin-top:18px;">
+  <div class="col">
+    <div class="card">
+      <h3>Pending Stop Orders (System-Wide)</h3>
+      <div style="overflow:auto;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="text-align:left;padding:8px;color:var(--muted)">User</th>
+              <th style="text-align:left;padding:8px;color:var(--muted)">Role</th>
+              <th style="text-align:left;padding:8px;color:var(--muted)">Action</th>
+              <th style="text-align:left;padding:8px;color:var(--muted)">Trigger Price</th>
+              <th style="text-align:left;padding:8px;color:var(--muted)">Limit Price</th>
+              <th style="text-align:left;padding:8px;color:var(--muted)">Quantity (Disclosed)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for order in pending_stop_orders %}
+            <tr>
+              <td style="padding:8px">{{ order.user.username }}</td>
+              <td style="padding:8px">{{ order.user_role }}</td>
+              <td style="padding:8px; font-weight:bold; color: {% if order.order_type == 'BUY' %}#28a745{% else %}#dc3545{% endif %};">
+                {{ order.order_type }}
+              </td>
+              <td style="padding:8px">₹{{ order.target_price }}</td>
+              <td style="padding:8px">{% if order.price %}₹{{ order.price }}{% else %}MARKET{% endif %}</td>
+              <td style="padding:8px">{{ order.quantity }} ({{ order.disclosed }})</td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="6" style="padding:8px; text-align:center; color:var(--muted);">No pending stop orders in the system.</td>
+            </tr>
             {% endfor %}
           </tbody>
         </table>
