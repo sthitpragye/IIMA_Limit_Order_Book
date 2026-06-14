@@ -1,14 +1,14 @@
 from django.db import models
-from django.contrib.auth.models import AbstractUser, BaseUserManager # Switched to BaseUserManager
+from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.utils.timezone import now
 from django.core.exceptions import ValidationError
+from decimal import Decimal
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, user_id, email=None, password=None, **extra_fields):
         if not user_id:
             raise ValueError("The User ID field must be set")
         email = self.normalize_email(email)
-        # username must be set (AbstractUser requires it) — mirror user_id
         extra_fields.setdefault('username', user_id)
         user = self.model(user_id=user_id, email=email, **extra_fields)
         user.set_password(password)
@@ -38,9 +38,6 @@ class BaseUser(AbstractUser):
     )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
 
-    # Use user_id for login instead of username.
-    # username still exists (AbstractUser) but we mirror it from user_id
-    # in the manager so it satisfies the unique constraint silently.
     USERNAME_FIELD = 'user_id'
     REQUIRED_FIELDS = ['name', 'email']
 
@@ -61,13 +58,9 @@ class BaseUser(AbstractUser):
         return f"{self.name} ({self.user_id})"
 
 
-# Trader and MarketMaker are MTI children of BaseUser.
-# They add NO extra DB fields — only the Python helper method.
-# Do NOT create their rows explicitly in upload/register views;
-# the role field on BaseUser is the source of truth for routing.
 class Trader(BaseUser):
     class Meta:
-        proxy = True  # <-- KEY CHANGE: proxy instead of MTI
+        proxy = True
 
     def allowed_order_modes(self):
         return ['MARKET']
@@ -75,12 +68,14 @@ class Trader(BaseUser):
 
 class MarketMaker(BaseUser):
     class Meta:
-        proxy = True  # <-- KEY CHANGE: proxy instead of MTI
+        proxy = True
 
     def allowed_order_modes(self):
         return ['LIMIT']
 
+
 from datetime import datetime
+
 
 class Order(models.Model):
     ORDER_TYPE_CHOICES = [
@@ -115,7 +110,6 @@ class Order(models.Model):
         self.full_clean()
         super().save(*args, **kwargs)
 
-
     user = models.ForeignKey(BaseUser, on_delete=models.CASCADE)
     user_role = models.CharField(max_length=30, choices=ROLE_CHOICES)
     order_type = models.CharField(max_length=10, choices=ORDER_TYPE_CHOICES)
@@ -125,15 +119,12 @@ class Order(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
     is_matched = models.BooleanField(default=False)
-    # original_quantity = models.IntegerField()
-    original_quantity = models.IntegerField(default=0)  # New field added
-
- 
-
+    original_quantity = models.IntegerField(default=0)
     is_ioc = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.order_type} {self.order_mode} Order #{self.id} by {self.user}"
+
 
 class Trade(models.Model):
     buyer = models.ForeignKey(BaseUser, related_name='buy_trades', on_delete=models.CASCADE)
@@ -146,30 +137,104 @@ class Trade(models.Model):
         return f"Trade #{self.id}: {self.buyer} ⇄ {self.seller} ({self.quantity} @ {self.price})"
 
 
-class Stoploss_Order(models.Model):
+class StopOrder(models.Model):
+    """
+    A stop-limit order for Market Makers.
+
+    When the last traded price crosses target_price, this order is
+    converted into a regular LIMIT Order and submitted to the book.
+
+    - BUY stop: triggers when last trade price >= target_price
+    - SELL stop: triggers when last trade price <= target_price
+
+    order_mode is always LIMIT (Market Makers can only place limit orders).
+    price (the limit price) is always required.
+    is_matched is set to True after the order has been triggered — the row
+    is kept for audit purposes.
+    """
+
     ORDER_TYPE_CHOICES = [
         ('BUY', 'Buy'),
         ('SELL', 'Sell'),
     ]
-    ORDER_MODE_CHOICES = [
-        ('LIMIT', 'Limit'),
-        ('MARKET', 'Market'),
-    ]
+
+    # ORDER_MODE_CHOICES = [
+    #     ('BUY', 'Buy'),
+    #     ('SELL', 'Sell'),
+    # ]
 
     user = models.ForeignKey(BaseUser, on_delete=models.CASCADE)
-    user_role = models.CharField(max_length=30, choices=BaseUser.ROLE_CHOICES, default='MARKET_MAKER')
+    user_role = models.CharField(
+        max_length=30,
+        choices=BaseUser.ROLE_CHOICES,
+        default='MARKET_MAKER',
+    )
     order_type = models.CharField(max_length=10, choices=ORDER_TYPE_CHOICES)
-    order_mode = models.CharField(max_length=10, choices=ORDER_MODE_CHOICES, default='MARKET')
+    # Always LIMIT — Market Makers only place limit orders.
+    # Not exposed as a user-editable field.
+    # order_mode = models.CharField(max_length=10, default='LIMIT', editable=False)
+    # order_mode = models.CharField(max_length=10, choices=ORDER_MODE_CHOICES)
+    order_mode = models.CharField(max_length=10)
+
     quantity = models.IntegerField()
     disclosed = models.IntegerField(default=0)
-    target_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    # The price level that triggers this order.
+    # target_price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    # The limit price the resulting Order will be placed at.
+    # price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    target_price = models.DecimalField(max_digits=10, decimal_places=2)
     price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
     timestamp = models.DateTimeField(auto_now_add=True)
+
+    # False = waiting to trigger. True = already triggered (kept for audit trail).
     is_matched = models.BooleanField(default=False)
+
     is_ioc = models.BooleanField(default=False)
 
+    # def clean(self):
+    #     if self.user_role != 'MARKET_MAKER':
+    #         raise ValidationError("Stop orders can only be placed by Market Makers.")
+    #     if self.price is None or self.price <= 0:
+    #         raise ValidationError("A valid limit price is required for stop orders.")
+    #     if self.target_price is None or self.target_price <= 0:
+    #         raise ValidationError("A valid trigger price is required for stop orders.")
+
+    def clean(self):
+        if self.quantity <= 0:
+            raise ValidationError("Quantity must be greater than zero.")
+        if self.disclosed <= 0:
+            raise ValidationError("Disclosed quantity must be greater than zero.")
+        if self.disclosed > self.quantity:
+            raise ValidationError("Disclosed quantity cannot exceed total quantity.")
+        
+        # Enforce Minimum Disclosed Quantity constraint (10%)
+        if self.disclosed < (self.quantity * Decimal('0.1')) and self.disclosed != self.quantity:
+            if self.quantity >= 10:
+                raise ValidationError("Disclosed quantity must be at least 10% of total quantity.")
+
+        # ---- NEW ROLE-BASED LOGIC ----
+        if self.user_role == 'MARKET_MAKER':
+            self.order_mode = 'LIMIT'
+            if self.price is None or self.price <= 0:
+                raise ValidationError("Market Makers must provide a valid limit price for stop orders.")
+        
+        elif self.user_role == 'TRADER':
+            self.order_mode = 'MARKET'
+            self.price = None  # Market orders don't use a limit price
+
+        if self.target_price is None or self.target_price <= 0:
+            raise ValidationError("A valid target price is required for stop orders.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"StopLoss {self.order_type} Order #{self.id} (Target: {self.target_price})"
+        return f"StopOrder {self.order_type} #{self.id} — trigger @ {self.target_price}, limit @ {self.price}"
 
 
 class MarketControl(models.Model):
