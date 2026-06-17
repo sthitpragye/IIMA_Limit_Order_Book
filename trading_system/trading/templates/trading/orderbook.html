@@ -222,6 +222,27 @@
 {% block scripts %}
 <script>
   const IS_ADMIN = "{{ base_role }}" === "ADMIN";
+  function toIST(utcString) {
+    if (!utcString || utcString === '-') return utcString;
+    let dateStr = utcString;
+    // If no timezone info is present, assume the value is UTC
+    if (!/Z$|[+-]\d{2}:?\d{2}$/.test(dateStr)) {
+      dateStr = dateStr.replace(' ', 'T') + 'Z';
+    }
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return utcString;
+    return date.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    });
+  }
+
   function updateBestBid() {
     fetch('/orderbook/get_best_bid/')
       .then(response => response.json())
@@ -307,7 +328,7 @@
         const trades = data.trades;
         const headers = ["price", "quantity", "timestamp"];
         const rows = trades.map(trade => headers.map(h => {
-          let val = trade[h];
+          let val = h === "timestamp" ? toIST(trade[h]) : trade[h];
           return `"${(val ?? "").toString().replace(/"/g, '""')}"`;
         }).join(','));
 
@@ -469,7 +490,7 @@
             ${IS_ADMIN ? `<td>${trade.buyer__user_id ?? '-'}</td><td>${trade.seller__user_id ?? '-'}</td>` : ''}
             <td>${trade.price}</td>
             <td>${trade.quantity}</td>
-            <td>${trade.timestamp}</td>
+            <td>${toIST(trade.timestamp)}</td>
           </tr>`;
         tableBody.innerHTML += row;
       });
@@ -584,7 +605,7 @@
             ${IS_ADMIN ? `<td>${trade.buyer__user_id ?? '-'}</td><td>${trade.seller__user_id ?? '-'}</td>` : ''}
             <td>${trade.price}</td>
             <td>${trade.quantity}</td>
-            <td>${trade.timestamp || '-'}</td>
+            <td>${toIST(trade.timestamp) || '-'}</td>
           </tr>`;
       });
     }
