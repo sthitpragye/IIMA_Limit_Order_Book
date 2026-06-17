@@ -22,9 +22,8 @@ A web-based trading system that simulates a real stock exchange limit order book
 10. [Placing Orders](#placing-orders)
     - [Market Maker — Limit Orders](#market-maker--limit-orders)
     - [Trader — Market Orders](#trader--market-orders)
-    - [Stop-Loss Orders](#stop-loss-orders)
+    - [Stop (Loss) Orders](#stop-(loss)-orders)
     - [Iceberg (Disclosed Quantity) Orders](#iceberg-disclosed-quantity-orders)
-    - [Immediate-or-Cancel (IOC) Orders](#immediate-or-cancel-ioc-orders)
 11. [Modifying and Cancelling Orders](#modifying-and-cancelling-orders)
 12. [Order Matching Logic](#order-matching-logic)
 13. [Admin Controls](#admin-controls)
@@ -49,9 +48,8 @@ The IIMA Limit Order Book simulates a two-sided securities exchange for educatio
 - **Role-based dashboards**: Separate UIs for Admin, Market Maker, and Trader
 - **Limit orders** (Market Makers): priced buy/sell orders that rest on the book
 - **Market orders** (Traders): execute immediately at the best available price
-- **Stop-loss orders**: triggered when the last trade price crosses a target level
+- **Stop (loss) orders**: triggered when the last trade price crosses a target level
 - **Iceberg / disclosed-quantity orders**: show only a portion of total size to the market
-- **Immediate-or-Cancel (IOC)**: unfilled portion is cancelled upon submission
 - **Order modification and cancellation** (Admin)
 - **Real-time order book and trade feed** via Django Channels + Redis
 - **Market pause / resume** (Admin): halts all new order submissions
@@ -338,8 +336,7 @@ Market Makers access their dashboard at `/market_maker_home/`. Each order requir
 | **Quantity** | Total number of shares |
 | **Disclosed Quantity** | Visible portion (≥ 10% of quantity; equal to quantity for a fully visible order) |
 | **Price** | Limit price (decimal, e.g. `152.50`) |
-| **IOC** | `True` to cancel any unfilled portion immediately |
-| **Stop-loss** | See [Stop-Loss Orders](#stop-loss-orders) |
+| **Stop (Loss)** | See [Stop (Loss) Orders](#stop-loss-orders) |
 
 Market Maker orders are passive — they rest on the book and are matched only when incoming Trader market orders cross them.
 
@@ -354,26 +351,21 @@ Traders access their dashboard at `/trader_home/`. Each market order requires:
 | **Order Type** | `BUY` or `SELL` |
 | **Quantity** | Number of shares |
 | **Disclosed Quantity** | Visible portion (≥ 10% of quantity) |
-| **IOC** | `True` to cancel any unfilled portion immediately |
 
 A Trader BUY market order executes against the best (lowest) ask in the book. A Trader SELL market order executes against the best (highest) bid. If no matching limit order exists, the order cannot be placed and an error is shown.
 
-### Stop-Loss Orders
+### Stop (Loss) Orders
 
-Available to Market Makers on the market maker dashboard. When placing an order, enable the **Stop-loss** toggle and provide:
+Available to Market Makers on the market maker dashboard. When placing an order, enable the **Stop (loss)** toggle and provide:
 
 - **Target Price** — the trigger level
-- **Price** — the limit price at which the converted order will be placed (optional for market-mode stop-loss)
+- **Price** — the limit price at which the converted order will be placed (optional for market-mode stop (loss))
 
-A stop-loss BUY triggers when the last trade price rises to or above the target. A stop-loss SELL triggers when the last trade price falls to or below the target. On trigger, the stop-loss is converted to a regular order and sent through the normal matching engine.
+A stop (loss) BUY triggers when the last trade price rises to or above the target. A stop (loss) SELL triggers when the last trade price falls to or below the target. On trigger, the stop (loss) is converted to a regular order and sent through the normal matching engine.
 
 ### Iceberg (Disclosed Quantity) Orders
 
 Any order where **Disclosed Quantity < Total Quantity** is treated as an iceberg order. Only the disclosed portion is visible in the public order book. When the visible tranche is fully matched, the next tranche becomes visible automatically. The minimum disclosed quantity is 10% of total quantity (or 1 share, whichever is larger).
-
-### Immediate-or-Cancel (IOC) Orders
-
-Set the **IOC** flag to `True` when placing any order. Any portion of the order that cannot be matched immediately is cancelled; no residual rests on the book.
 
 ---
 
@@ -403,7 +395,7 @@ The matching engine runs whenever a new Trader market order is submitted (`match
 3. Partial fills are supported — a single incoming order may consume multiple resting limit orders.
 4. For iceberg orders, only the currently disclosed tranche is consumed; the next tranche is revealed automatically.
 5. Each matched pair creates a `Trade` record (buyer, seller, quantity, price, timestamp).
-6. After each trade, the stop-loss engine checks whether any pending stop-loss orders have been triggered by the new closing price.
+6. After each trade, the stop (loss) engine checks whether any pending stop (loss) orders have been triggered by the new closing price.
 
 ---
 
@@ -489,7 +481,7 @@ make up        # docker compose up -d
 | `/orderbook/` | Live order book view | Authenticated |
 | `/modify_order/` | Order modification UI | Admin only |
 | `/cancel_order/` | Cancel an order (POST) | Authenticated |
-| `/cancel_stoploss_order/` | Cancel a stop-loss (POST) | Authenticated |
+| `/cancel_stop(loss)_order/` | Cancel a stop (loss) (POST) | Authenticated |
 | `/bulk_user_upload/` | Bulk user creation via CSV | Admin only |
 | `/bulk-delete/` | Bulk user deletion via CSV | Admin only |
 | `/password-reset/` | Change password | Authenticated |
