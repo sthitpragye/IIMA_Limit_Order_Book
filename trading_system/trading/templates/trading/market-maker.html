@@ -318,6 +318,16 @@
   <div class="card" style="text-align: center;">
     <h2 style="margin-bottom: 8px; text-shadow: 0 0 12px rgba(0, 255, 255, 0.45);">Welcome, {{ request.user.name }}!</h2>
     <p class="mm-subtitle">Your market-making dashboard is ready. Quote both sides and manage live exposure.</p>
+    <div style="display:flex; justify-content:center; gap:32px; margin-top:14px; flex-wrap:wrap;">
+      <div>
+        <span style="color:var(--muted); font-size:0.75rem; display:block;">Capital Available</span>
+        <strong style="font-size:1.1rem;">&#8377;{{ capital|floatformat:2 }}</strong>
+      </div>
+      <div>
+        <span style="color:var(--muted); font-size:0.75rem; display:block;">Inventory</span>
+        <strong style="font-size:1.1rem;">{{ inventory }} units</strong>
+      </div>
+    </div>
   </div>
 
   <div class="mm-header">

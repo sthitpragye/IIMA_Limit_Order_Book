@@ -27,6 +27,12 @@ class CustomUserManager(BaseUserManager):
         return self.create_user(user_id, email, password, **extra_fields)
 
 
+MARKET_MAKER_INITIAL_CAPITAL = Decimal('5000000.00')  # 50 lakh
+TRADER_INITIAL_CAPITAL = Decimal('1000000.00')         # 10 lakh
+MARKET_MAKER_INITIAL_INVENTORY = 100
+TRADER_INITIAL_INVENTORY = 0
+
+
 class BaseUser(AbstractUser):
     user_id = models.CharField(max_length=100, unique=True, verbose_name="User ID")
     name = models.CharField(max_length=150)
@@ -37,6 +43,8 @@ class BaseUser(AbstractUser):
         ('ADMIN', 'Admin'),
     )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    capital = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    inventory = models.IntegerField(default=0)
 
     USERNAME_FIELD = 'user_id'
     REQUIRED_FIELDS = ['name', 'email']
@@ -53,6 +61,16 @@ class BaseUser(AbstractUser):
         related_name='base_user_permissions',
         blank=True,
     )
+
+    def save(self, *args, **kwargs):
+        if self.pk is None:  # Set initial capital/inventory only on first creation
+            if self.role == 'MARKET_MAKER':
+                self.capital = MARKET_MAKER_INITIAL_CAPITAL
+                self.inventory = MARKET_MAKER_INITIAL_INVENTORY
+            elif self.role == 'TRADER':
+                self.capital = TRADER_INITIAL_CAPITAL
+                self.inventory = TRADER_INITIAL_INVENTORY
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.name} ({self.user_id})"
