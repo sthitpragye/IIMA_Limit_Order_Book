@@ -37,6 +37,16 @@
 <div class="card welcome-card">
   <h2>Welcome, {{ request.user.name }}!</h2>
   <p style="color: var(--muted);">Your trading dashboard is ready. Execute orders with precision and speed.</p>
+  <div style="display:flex; justify-content:center; gap:32px; margin-top:14px; flex-wrap:wrap;">
+    <div>
+      <span style="color:var(--muted); font-size:0.75rem; display:block;">Capital Available</span>
+      <strong style="font-size:1.1rem;">&#8377;{{ capital|floatformat:2 }}</strong>
+    </div>
+    <div>
+      <span style="color:var(--muted); font-size:0.75rem; display:block;">Inventory</span>
+      <strong style="font-size:1.1rem;">{{ inventory }} units</strong>
+    </div>
+  </div>
 </div>
 
 <div class="trader-top-grid">

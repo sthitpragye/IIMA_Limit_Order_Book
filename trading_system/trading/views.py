@@ -1507,6 +1507,24 @@ def market_maker_home(request):
             if order_mode == "LIMIT" and (price is None or price <= 0):
                 return JsonResponse({'success': False, 'message': 'Valid price required for limit orders'}, status=400)
 
+            # Capital and inventory checks (skip for stop orders — trigger price unknown)
+            if stoploss_order == 'NO':
+                if order_type == 'BUY':
+                    required_capital = price * quantity
+                    user.refresh_from_db()
+                    if user.capital < required_capital:
+                        return JsonResponse({
+                            'success': False,
+                            'message': f'Insufficient capital. Required: ₹{required_capital:,.2f}, Available: ₹{user.capital:,.2f}',
+                        }, status=400)
+                elif order_type == 'SELL':
+                    user.refresh_from_db()
+                    if user.inventory < quantity:
+                        return JsonResponse({
+                            'success': False,
+                            'message': f'Insufficient inventory. Required: {quantity} units, Available: {user.inventory} units.',
+                        }, status=400)
+
             if stoploss_order != 'NO':
                 try:
                     if target_price in (None, ''):
@@ -1563,8 +1581,16 @@ def market_maker_home(request):
     trades = Trade.objects.filter(Q(buyer=user) | Q(seller=user))
     stop_orders = StopOrder.objects.filter(user=user, is_matched=False)
 
+    user.refresh_from_db()
     execute_order()
-    return render(request, 'trading/market-maker.html', {'orders': orders, 'trades': trades, 'stop_orders': stop_orders, 'base_role': user.role})
+    return render(request, 'trading/market-maker.html', {
+        'orders': orders,
+        'trades': trades,
+        'stop_orders': stop_orders,
+        'base_role': user.role,
+        'capital': user.capital,
+        'inventory': user.inventory,
+    })
 
 @login_required
 def trader_home(request):
@@ -1598,12 +1624,19 @@ def trader_home(request):
             messages.error(request, "Disclosed Quantity cannot be less than 10% of Quantity.")
             return redirect('trader_home')
 
+        # Inventory check for SELL orders (skip for stop orders)
+        if order_type == 'SELL' and stoploss_order != 'YES':
+            user.refresh_from_db()
+            if user.inventory < quantity:
+                messages.error(request, f'Insufficient inventory. Required: {quantity} units, Available: {user.inventory} units.')
+                return redirect('trader_home')
+
         try:
             if stoploss_order == 'YES':
                 if not target_price:
                     messages.error(request, 'Trigger price is required for stop orders.')
                     return redirect('trader_home')
-                
+
                 parsed_target_price = Decimal(target_price)
                 if parsed_target_price <= 0:
                     messages.error(request, 'Trigger price must be greater than 0.')
@@ -1652,12 +1685,15 @@ def trader_home(request):
     trades = Trade.objects.filter(Q(buyer=user) | Q(seller=user))
     stop_orders = StopOrder.objects.filter(user=user, is_matched=False)
 
+    user.refresh_from_db()
     execute_order()
     return render(request, 'trading/trader.html', {
-        'orders': orders, 
-        'trades': trades, 
-        'stop_orders': stop_orders, 
-        'base_role': user.role
+        'orders': orders,
+        'trades': trades,
+        'stop_orders': stop_orders,
+        'base_role': user.role,
+        'capital': user.capital,
+        'inventory': user.inventory,
     })
 
 @login_required
@@ -1788,6 +1824,9 @@ def clear_database(request):
     Order.objects.all().delete()
     Trade.objects.all().delete()
     StopOrder.objects.all().delete()
+    from .models import MARKET_MAKER_INITIAL_CAPITAL, TRADER_INITIAL_CAPITAL, MARKET_MAKER_INITIAL_INVENTORY, TRADER_INITIAL_INVENTORY
+    BaseUser.objects.filter(role='MARKET_MAKER').update(capital=MARKET_MAKER_INITIAL_CAPITAL, inventory=MARKET_MAKER_INITIAL_INVENTORY)
+    BaseUser.objects.filter(role='TRADER').update(capital=TRADER_INITIAL_CAPITAL, inventory=TRADER_INITIAL_INVENTORY)
     return redirect('login')
 
 @login_required

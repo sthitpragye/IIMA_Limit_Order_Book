@@ -1,6 +1,7 @@
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
-from .models import Order, Trade
+from .models import Order, Trade, BaseUser
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 import logging
@@ -240,12 +241,23 @@ def match_order(new_order):
                     match_quantity = min(remaining_quantity, visible_qty)
                     match_price = opposite_order.price
 
+                    trade_buyer = new_order.user if new_order.order_type == 'BUY' else opposite_order.user
+                    trade_seller = opposite_order.user if new_order.order_type == 'BUY' else new_order.user
                     Trade.objects.create(
-                        buyer=new_order.user if new_order.order_type == 'BUY' else opposite_order.user,
-                        seller=opposite_order.user if new_order.order_type == 'BUY' else new_order.user,
+                        buyer=trade_buyer,
+                        seller=trade_seller,
                         quantity=match_quantity,
                         price=match_price,
                         timestamp=timezone.now()
+                    )
+                    trade_value = match_price * match_quantity
+                    BaseUser.objects.filter(pk=trade_buyer.pk).update(
+                        capital=F('capital') - trade_value,
+                        inventory=F('inventory') + match_quantity,
+                    )
+                    BaseUser.objects.filter(pk=trade_seller.pk).update(
+                        capital=F('capital') + trade_value,
+                        inventory=F('inventory') - match_quantity,
                     )
                     broadcast_orderbook_update()
 
@@ -300,12 +312,24 @@ def match_order(new_order):
                             break
 
                         match_quantity = min(visible_qty, remaining_quantity)
+                        trade_buyer = new_order.user if new_order.order_type == 'BUY' else opposite_order.user
+                        trade_seller = opposite_order.user if new_order.order_type == 'BUY' else new_order.user
+                        trade_price = opposite_order.price
                         Trade.objects.create(
-                            buyer=new_order.user if new_order.order_type == 'BUY' else opposite_order.user,
-                            seller=opposite_order.user if new_order.order_type == 'BUY' else new_order.user,
+                            buyer=trade_buyer,
+                            seller=trade_seller,
                             quantity=match_quantity,
-                            price=opposite_order.price,
+                            price=trade_price,
                             timestamp=timezone.now()
+                        )
+                        trade_value = trade_price * match_quantity
+                        BaseUser.objects.filter(pk=trade_buyer.pk).update(
+                            capital=F('capital') - trade_value,
+                            inventory=F('inventory') + match_quantity,
+                        )
+                        BaseUser.objects.filter(pk=trade_seller.pk).update(
+                            capital=F('capital') + trade_value,
+                            inventory=F('inventory') - match_quantity,
                         )
                         broadcast_orderbook_update()
                         remaining_quantity -= match_quantity
